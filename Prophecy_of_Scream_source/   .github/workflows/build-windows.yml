@@ -1,0 +1,23 @@
+   name: Build Windows VST3
+
+   on:
+     push:
+     workflow_dispatch:
+
+   jobs:
+     windows:
+       runs-on: windows-latest
+       steps:
+         - uses: actions/checkout@v4
+
+         - name: Configure
+           run: cmake -S Prophecy_of_Scream_source -B build -A x64
+
+         - name: Build VST3
+           run: cmake --build build --config Release --target ProphecyOfScream_VST3 --parallel
+
+         - name: Upload VST3
+           uses: actions/upload-artifact@v4
+           with:
+             name: Prophecy-of-Scream-VST3-Windows
+             path: build/ProphecyOfScream_artefacts/Release/VST3/

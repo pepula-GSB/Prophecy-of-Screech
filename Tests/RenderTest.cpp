@@ -74,6 +74,35 @@ int main (int argc, char** argv)
     printf ("state round-trip: %s\n", stateOk ? "OK" : "FAIL");
     ok &= stateOk;
 
+    // randomize + user preset save/load round-trip
+    for (int i = 0; i < 20; ++i)
+    {
+        proc.randomize();
+        AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer midi;
+        midi.addEvent (MidiMessage::noteOn (1, 60, (uint8) 110), 0);
+        float pk = 0.f; bool bad = false;
+        for (int b = 0; b < 60; ++b)
+        {
+            buf.clear(); proc.processBlock (buf, midi); midi.clear();
+            for (int ch = 0; ch < 2; ++ch)
+                for (int s = 0; s < block; ++s) { auto v = buf.getSample (ch, s); bad |= ! std::isfinite (v); pk = jmax (pk, std::abs (v)); }
+        }
+        MidiBuffer off; off.addEvent (MidiMessage::allNotesOff (1), 0); buf.clear(); proc.processBlock (buf, off);
+        if (bad || pk < 0.02f) { printf ("randomize #%d FAIL (peak %.3f)\n", i, pk); ok = false; }
+    }
+    printf ("randomize x20: done\n");
+    {
+        const float cut = proc.apvts.getRawParameterValue ("cutoff")->load();
+        const bool saved = proc.saveUserPreset ("__test_preset");
+        auto f = ProphecyProcessor::getUserPresetFolder().getChildFile ("__test_preset.pos");
+        proc.setCurrentProgram (0);
+        const bool loaded = proc.loadUserPreset (f);
+        const bool same = std::abs (proc.apvts.getRawParameterValue ("cutoff")->load() - cut) < 1.f;
+        printf ("user preset save/load: %s\n", (saved && loaded && same) ? "OK" : "FAIL");
+        ok &= saved && loaded && same;
+        f.deleteFile();
+    }
+
     // write wav
     {
         auto f = outDir.getChildFile ("prophecy_demo.wav");
@@ -84,7 +113,7 @@ int main (int argc, char** argv)
     }
 
     // GUI snapshot
-    proc.setCurrentProgram (1);
+    proc.setCurrentProgram (proc.getNumPrograms() - 1);   // Dutchie
     for (int b = 0; b < 40; ++b)
     {
         AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer midi;

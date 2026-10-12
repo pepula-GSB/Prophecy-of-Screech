@@ -27,6 +27,10 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox&) override;
     juce::Font getPopupMenuFont() override;
     juce::Label* createSliderTextBox (juce::Slider&) override;
+    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool highlighted, bool down) override;
+    void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    juce::Font getAlertWindowTitleFont() override;
+    juce::Font getAlertWindowMessageFont() override;
 };
 
 // ------------------------------------------------------------------ knob
@@ -93,12 +97,20 @@ private:
     Knob* add (const char* id, const juce::String& label, bool bipolar = false, bool big = false);
     Toggle* addToggle (const char* id, const juce::String& label);
 
+    void refreshPresetList();
+    void showSaveDialog();
+
+    juce::TextButton saveButton { "SAVE" }, randomButton { "RANDOMIZE" };
+    juce::Array<juce::File> userPresetFiles;
+    std::unique_ptr<juce::AlertWindow> saveDialog;
+    juce::String lastPresetName;
+    static constexpr int userIdBase = 1000;
+
     Knob* rateKnob = nullptr;
     Knob* divKnob = nullptr;
     Scope scope;
     juce::ComboBox presetBox;
     float angle = 0.f;
-    int lastProgram = -1;
 };
 
 // ------------------------------------------------------------------ editor

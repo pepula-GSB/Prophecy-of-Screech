@@ -27,7 +27,38 @@ ProphecyLookAndFeel::ProphecyLookAndFeel()
     setColour (Slider::textBoxOutlineColourId, Colours::transparentBlack);
     setColour (Slider::textBoxTextColourId, Palette::dimText);
     setColour (Slider::textBoxBackgroundColourId, Colours::transparentBlack);
+    setColour (AlertWindow::backgroundColourId, Colour (0xff120c0e));
+    setColour (AlertWindow::textColourId, Palette::text);
+    setColour (AlertWindow::outlineColourId, Palette::red);
+    setColour (TextButton::textColourOffId, Palette::text);
+    setColour (TextButton::textColourOnId, Colours::white);
 }
+
+void ProphecyLookAndFeel::drawButtonBackground (Graphics& g, Button& b, const Colour&, bool highlighted, bool down)
+{
+    auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+    if (highlighted)
+    {
+        g.setColour (Palette::red.withAlpha (0.18f));
+        g.fillRoundedRectangle (r.expanded (2.f), 6.f);
+    }
+    ColourGradient bgGrad (down ? Palette::deepRed : Colour (0xff1c1114), r.getX(), r.getY(),
+                           down ? Palette::deepRed.darker (0.4f) : Colour (0xff0e090a), r.getX(), r.getBottom(), false);
+    g.setGradientFill (bgGrad);
+    g.fillRoundedRectangle (r, 4.f);
+    g.setColour (highlighted ? Palette::red : Palette::panelEdge.brighter (0.3f));
+    g.drawRoundedRectangle (r, 4.f, 1.2f);
+}
+
+void ProphecyLookAndFeel::drawButtonText (Graphics& g, TextButton& b, bool highlighted, bool)
+{
+    g.setFont (uiFont (12.f, true, 0.18f));
+    g.setColour (highlighted ? Colours::white : Palette::text);
+    g.drawText (b.getButtonText(), b.getLocalBounds(), Justification::centred);
+}
+
+Font ProphecyLookAndFeel::getAlertWindowTitleFont()   { return uiFont (16.f, true, 0.2f); }
+Font ProphecyLookAndFeel::getAlertWindowMessageFont() { return uiFont (13.f, false); }
 
 void ProphecyLookAndFeel::drawRotarySlider (Graphics& g, int x, int y, int w, int h, float pos,
                                             float startAngle, float endAngle, Slider& s)
@@ -321,22 +352,87 @@ Canvas::Canvas (ProphecyProcessor& p) : proc (p), scope (p)
     };
     addAndMakeVisible (scope);
 
-    for (int i = 0; i < proc.getNumPrograms(); ++i)
-        presetBox.addItem (proc.getProgramName (i), i + 1);
-    presetBox.setSelectedId (proc.getCurrentProgram() + 1, dontSendNotification);
+    refreshPresetList();
     presetBox.onChange = [this]
     {
-        const int idx = presetBox.getSelectedId() - 1;
-        if (idx >= 0 && idx != proc.getCurrentProgram()) { proc.setCurrentProgram (idx); lastProgram = idx; }
-        else if (idx >= 0) proc.setCurrentProgram (idx);
+        const int id = presetBox.getSelectedId();
+        if (id <= 0) return;
+        if (id < userIdBase)
+            proc.setCurrentProgram (id - 1);
+        else if (isPositiveAndBelow (id - userIdBase, userPresetFiles.size()))
+            proc.loadUserPreset (userPresetFiles[id - userIdBase]);
+        lastPresetName = proc.getPresetName();
     };
+    presetBox.setTooltip ("Presety fabryczne i Twoje zapisane presety");
+
+    saveButton.onClick = [this] { showSaveDialog(); };
+    saveButton.setTooltip ("Zapisz obecne brzmienie jako preset");
+    randomButton.onClick = [this] { proc.randomize(); };
+    randomButton.setTooltip ("Losowy screech w rozsadnych zakresach");
+    addAndMakeVisible (saveButton);
+    addAndMakeVisible (randomButton);
     addAndMakeVisible (presetBox);
 
     setSize (W, H);
+    timerCallback();   // show preset name / sync state right away
     startTimerHz (30);
 }
 
-Canvas::~Canvas() { setLookAndFeel (nullptr); }
+Canvas::~Canvas()
+{
+    if (saveDialog != nullptr) saveDialog->exitModalState (0);
+    saveDialog.reset();
+    setLookAndFeel (nullptr);
+}
+
+void Canvas::refreshPresetList()
+{
+    presetBox.clear (dontSendNotification);
+    presetBox.addSectionHeading ("FACTORY");
+    for (int i = 0; i < proc.getNumPrograms(); ++i)
+        presetBox.addItem (proc.getProgramName (i), i + 1);
+
+    userPresetFiles = proc.getUserPresets();
+    if (! userPresetFiles.isEmpty())
+    {
+        presetBox.addSeparator();
+        presetBox.addSectionHeading ("USER");
+        for (int i = 0; i < userPresetFiles.size(); ++i)
+            presetBox.addItem (userPresetFiles[i].getFileNameWithoutExtension(), userIdBase + i);
+    }
+    lastPresetName = {};   // force the timer to re-sync the displayed name
+}
+
+void Canvas::showSaveDialog()
+{
+    if (saveDialog != nullptr) return;
+
+    saveDialog = std::make_unique<AlertWindow> ("SAVE PRESET",
+                                                "Nazwa presetu (zapis do Dokumenty/Prophecy of Scream/Presets):",
+                                                MessageBoxIconType::NoIcon, this);
+    saveDialog->setLookAndFeel (&lnf);
+    auto suggested = proc.getPresetName().startsWith ("Random") ? String ("My Screech") : proc.getPresetName();
+    saveDialog->addTextEditor ("name", suggested);
+    saveDialog->addButton ("SAVE", 1, KeyPress (KeyPress::returnKey));
+    saveDialog->addButton ("CANCEL", 0, KeyPress (KeyPress::escapeKey));
+
+    SafePointer<Canvas> safe (this);
+    saveDialog->enterModalState (true, ModalCallbackFunction::create ([safe] (int result)
+    {
+        if (safe == nullptr || safe->saveDialog == nullptr) return;
+        const auto name = safe->saveDialog->getTextEditorContents ("name");
+        MessageManager::callAsync ([safe] { if (safe != nullptr) safe->saveDialog.reset(); });
+
+        if (result == 1)
+        {
+            if (safe->proc.saveUserPreset (name))
+                safe->refreshPresetList();
+            else
+                AlertWindow::showMessageBoxAsync (MessageBoxIconType::WarningIcon, "SAVE PRESET",
+                                                  "Nie udalo sie zapisac presetu.");
+        }
+    }), false);
+}
 
 void Canvas::timerCallback()
 {
@@ -347,8 +443,16 @@ void Canvas::timerCallback()
     if (rateKnob->isEnabled() == sync) { rateKnob->setEnabled (! sync); rateKnob->repaint(); }
     if (divKnob->isEnabled() != sync)  { divKnob->setEnabled (sync); divKnob->repaint(); }
 
-    const int prog = proc.getCurrentProgram();
-    if (prog != lastProgram) { presetBox.setSelectedId (prog + 1, dontSendNotification); lastProgram = prog; }
+    const auto name = proc.getPresetName();
+    if (name != lastPresetName)
+    {
+        lastPresetName = name;
+        int found = 0;
+        for (int i = 0; i < presetBox.getNumItems(); ++i)
+            if (presetBox.getItemText (i) == name) { found = presetBox.getItemId (i); break; }
+        if (found != 0) presetBox.setSelectedId (found, dontSendNotification);
+        else            presetBox.setText (name, dontSendNotification);
+    }
 }
 
 void Canvas::layoutRow (int y, int h, const std::vector<RowItem>& items)
@@ -395,7 +499,10 @@ void Canvas::resized()
     layoutRow (124, 200, row0);
     layoutRow (338, 200, row1);
     layoutRow (552, 192, row2);
-    presetBox.setBounds (W - 16 - 230, 52, 230, 32);
+    const int px = W - 16 - 230;
+    presetBox.setBounds (px, 32, 230, 30);
+    randomButton.setBounds (px, 70, 150, 28);
+    saveButton.setBounds (px + 158, 70, 72, 28);
 }
 
 void Canvas::drawSigil (Graphics& g)
@@ -492,7 +599,7 @@ void Canvas::paint (Graphics& g)
 
     g.setFont (uiFont (10.f, true, 0.3f));
     g.setColour (Palette::dimText);
-    g.drawText ("PRESET", Rectangle<int> (W - 16 - 230, 34, 230, 14), Justification::left);
+    g.drawText ("PRESET", Rectangle<int> (W - 16 - 230, 16, 230, 14), Justification::left);
     g.drawText ("v1.0  //  MONO  LEGATO  ENGINE", Rectangle<int> (16, 34, 300, 14), Justification::left);
     g.drawText ("4X OVERSAMPLED", Rectangle<int> (16, 50, 300, 14), Justification::left);
     g.setColour (Palette::red.withAlpha (0.8f));

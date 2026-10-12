@@ -38,6 +38,14 @@ public:
     static juce::AudioProcessorValueTreeState::ParameterLayout createLayout();
     juce::AudioProcessorValueTreeState apvts;
 
+    // presets (message thread)
+    static juce::File getUserPresetFolder();
+    juce::Array<juce::File> getUserPresets() const;
+    bool saveUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::File& file);
+    void randomize();
+    juce::String getPresetName() const { return currentPresetName; }
+
     // oscilloscope feed (written on audio thread, read on UI thread)
     static constexpr int scopeSize = 4096;
     std::array<float, scopeSize> scopeBuffer {};
@@ -58,6 +66,9 @@ private:
     } ptr {};
     ScreechEngine engine;
     int currentProgram = 0;
+    juce::String currentPresetName { "Prophecy Lead" };
+    juce::Random randomGen;
+    void applyValues (const juce::XmlElement& xml);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProphecyProcessor)
 };

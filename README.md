@@ -43,7 +43,10 @@ Syntezator screechy do hardstyle / rawstyle / uptempo / frenchcore. VST3 (instru
 Dwuklik na pokrętle = wartość domyślna. Okno można skalować za róg.
 
 ## Presety
-Prophecy Lead, Raw Scream, Talking Screech, Siren Riser, Uptempo Laser, Euphoric Scream, Frenchcore Rip, Hoover Scream.
+Fabryczne: Prophecy Lead, Raw Scream, Talking Screech, Siren Riser, Uptempo Laser, Euphoric Scream, Frenchcore Rip, Hoover Scream, **Dutchie** (ładuje się domyślnie przy nowej instancji).
+
+- **SAVE** – zapisuje obecne brzmienie jako Twój preset (`Dokumenty\Prophecy of Scream\Presets\*.pos`). Twoje presety pojawiają się na liście w sekcji USER. Żeby usunąć preset, skasuj jego plik z tego folderu.
+- **RANDOMIZE** – losuje nowy screech w rozsądnych zakresach (głośność zostaje bez zmian).
 
 ## Tip
 Screeche najlepiej grać monofonicznie z nachodzącymi nutami (legato + glide) i ustawić pitch-bend w pianorollu FL.

@@ -130,6 +130,14 @@ namespace
             { "Hoover Scream", { { unison, 7 }, { detune, 55 }, { wave, 0.35f }, { glide, 180 }, { penv, -12 }, { pdecay, 300 },
                                  { fm, 0.3f }, { fmRatio, 0 /*0.5*/ }, { dtype, 1 }, { drive, 16 }, { ftype, 0 }, { cutoff, 5000 },
                                  { reso, 0.2f }, { width, 1.f } } },
+            { "Dutchie", { { wave, 1.f }, { unison, 4 }, { detune, 90 }, { width, 1.f }, { fm, 0.91f }, { fmRatio, 3 /*2*/ },
+                           { glide, 116.422f }, { penv, 16.1f }, { pdecay, 321.191f }, { bend, 15 }, { legato, 1 },
+                           { dtype, 3 }, { drive, 48 }, { bite, 25 }, { dmix, 1.f },
+                           { ftype, 1 }, { cutoff, 20000 }, { reso, 0.51f }, { fenv, 2.5f }, { fdecay, 190.342f }, { keytrack, 1.f },
+                           { lshape, 1 }, { lsync, 0 }, { lrate, 4.f }, { lfoDiv, 3 /*1/16D*/ }, { lcut, 0.41f }, { lpitch, 5.f },
+                           { attack, 0.1f }, { decay, 1940 }, { sustain, 1.f }, { release, 29.715f },
+                           { dtime, 8 /*1/4*/ }, { dfb, 0.52f }, { dfx, 0.29f }, { pingpong, 1 },
+                           { rsize, 0.65f }, { rdamp, 0.63f }, { rmix, 0.52f }, { volume, -6 }, { scream, 0.5f } } },
         };
         return p;
     }
@@ -146,6 +154,7 @@ void ProphecyProcessor::setCurrentProgram (int index)
 {
     if (! isPositiveAndBelow (index, (int) presets().size())) return;
     currentProgram = index;
+    currentPresetName = presets()[(size_t) index].name;
 
     for (auto* p : getParameters())
         if (auto* rp = dynamic_cast<RangedAudioParameter*> (p))
@@ -154,6 +163,128 @@ void ProphecyProcessor::setCurrentProgram (int index)
     for (auto& [id, v] : presets()[(size_t) index].values)
         if (auto* rp = apvts.getParameter (id))
             rp->setValueNotifyingHost (rp->convertTo0to1 (v));
+}
+
+// ------------------------------------------------------------ user presets
+File ProphecyProcessor::getUserPresetFolder()
+{
+    return File::getSpecialLocation (File::userDocumentsDirectory)
+               .getChildFile ("Prophecy of Scream").getChildFile ("Presets");
+}
+
+Array<File> ProphecyProcessor::getUserPresets() const
+{
+    auto files = getUserPresetFolder().findChildFiles (File::findFiles, false, "*.pos");
+    files.sort();
+    return files;
+}
+
+bool ProphecyProcessor::saveUserPreset (const String& name)
+{
+    const auto clean = File::createLegalFileName (name.trim());
+    if (clean.isEmpty()) return false;
+
+    auto folder = getUserPresetFolder();
+    if (! folder.createDirectory()) return false;
+
+    auto state = apvts.copyState();
+    std::unique_ptr<XmlElement> xml (state.createXml());
+    if (xml == nullptr) return false;
+    xml->removeAttribute ("program");
+    xml->removeAttribute ("presetName");
+
+    if (! xml->writeTo (folder.getChildFile (clean + ".pos")))
+        return false;
+
+    currentPresetName = clean;
+    return true;
+}
+
+void ProphecyProcessor::applyValues (const XmlElement& xml)
+{
+    for (auto* p : getParameters())
+        if (auto* rp = dynamic_cast<RangedAudioParameter*> (p))
+            rp->setValueNotifyingHost (rp->getDefaultValue());
+
+    for (auto* child : xml.getChildWithTagNameIterator ("PARAM"))
+        if (auto* rp = apvts.getParameter (child->getStringAttribute ("id")))
+            rp->setValueNotifyingHost (rp->convertTo0to1 ((float) child->getDoubleAttribute ("value")));
+}
+
+bool ProphecyProcessor::loadUserPreset (const File& file)
+{
+    auto xml = XmlDocument::parse (file);
+    if (xml == nullptr || ! xml->hasTagName (apvts.state.getType())) return false;
+    applyValues (*xml);
+    currentPresetName = file.getFileNameWithoutExtension();
+    return true;
+}
+
+void ProphecyProcessor::randomize()
+{
+    using namespace ParamIDs;
+    auto& r = randomGen;
+    auto set = [this] (const char* id, float v)
+    {
+        if (auto* p = apvts.getParameter (id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (v));
+            p->endChangeGesture();
+        }
+    };
+    auto between = [&r] (float lo, float hi) { return lo + r.nextFloat() * (hi - lo); };
+    auto logBetween = [&r] (float lo, float hi) { return lo * std::pow (hi / lo, r.nextFloat()); };
+    auto pick = [&r] (std::initializer_list<int> opts) { return (float) *(opts.begin() + r.nextInt ((int) opts.size())); };
+
+    // oscillator
+    set (wave, r.nextFloat());
+    set (unison, (float) (1 + r.nextInt (7)));
+    set (detune, between (5.f, 70.f));
+    set (width, between (0.3f, 1.f));
+    set (fm, between (0.f, 0.9f));
+    set (fmRatio, (float) r.nextInt (8));
+    // pitch – screeches love legato + a pitch drop
+    set (glide, logBetween (5.f, 300.f));
+    set (penv, r.nextFloat() < 0.75f ? between (4.f, 36.f) : between (-24.f, -4.f));
+    set (pdecay, logBetween (30.f, 600.f));
+    set (legato, 1.f);
+    // distortion
+    set (dtype, (float) r.nextInt (4));
+    set (drive, between (14.f, 44.f));
+    set (bite, logBetween (40.f, 900.f));
+    set (dmix, between (0.7f, 1.f));
+    // filter
+    set (ftype, pick ({ 0, 1, 1, 2 }));
+    set (cutoff, logBetween (900.f, 14000.f));
+    set (reso, between (0.15f, 0.8f));
+    set (fenv, between (-1.f, 4.f));
+    set (fdecay, logBetween (60.f, 1200.f));
+    set (keytrack, between (0.2f, 1.f));
+    // lfo
+    set (lshape, (float) r.nextInt (5));
+    set (lsync, r.nextFloat() < 0.8f ? 1.f : 0.f);
+    set (lrate, logBetween (0.5f, 12.f));
+    set (lfoDiv, pick ({ 2, 3, 4, 5, 6, 8 }));
+    set (lcut, r.nextFloat() < 0.6f ? between (-0.5f, 2.5f) : 0.f);
+    set (lpitch, r.nextFloat() < 0.3f ? between (-2.f, 2.f) : 0.f);
+    // macro
+    set (scream, between (0.1f, 0.7f));
+    // amp – keep it playable
+    set (attack, logBetween (0.1f, 15.f));
+    set (decay, logBetween (150.f, 2500.f));
+    set (sustain, between (0.6f, 1.f));
+    set (release, logBetween (20.f, 400.f));
+    // fx – tasteful amounts
+    set (dtime, pick ({ 2, 5, 6, 8 }));
+    set (dfb, between (0.1f, 0.6f));
+    set (dfx, between (0.f, 0.3f));
+    set (rsize, between (0.4f, 0.9f));
+    set (rdamp, between (0.2f, 0.7f));
+    set (rmix, between (0.05f, 0.4f));
+    // volume is left alone on purpose
+
+    currentPresetName = "Random #" + String (1000 + r.nextInt (9000));
 }
 
 // ------------------------------------------------------------ processor
@@ -170,6 +301,10 @@ ProphecyProcessor::ProphecyProcessor()
             g (lshape), g (lsync), g (lrate), g (lfoDiv), g (lcut), g (lpitch),
             g (attack), g (decay), g (sustain), g (release),
             g (dtime), g (dfb), g (dfx), g (pingpong), g (rsize), g (rdamp), g (rmix), g (volume) };
+
+    // fresh instances start on "Dutchie"
+    for (int i = 0; i < getNumPrograms(); ++i)
+        if (getProgramName (i) == "Dutchie") { setCurrentProgram (i); break; }
 }
 
 bool ProphecyProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -271,6 +406,7 @@ void ProphecyProcessor::getStateInformation (MemoryBlock& destData)
 {
     auto state = apvts.copyState();
     state.setProperty ("program", currentProgram, nullptr);
+    state.setProperty ("presetName", currentPresetName, nullptr);
     if (auto xml = state.createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -282,6 +418,7 @@ void ProphecyProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto vt = ValueTree::fromXml (*xml);
             currentProgram = vt.getProperty ("program", 0);
+            currentPresetName = vt.getProperty ("presetName", getProgramName (currentProgram)).toString();
             apvts.replaceState (vt);
         }
 }

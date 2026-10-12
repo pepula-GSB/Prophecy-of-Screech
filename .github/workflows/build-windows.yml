@@ -1,23 +1,27 @@
-   name: Build Windows VST3
+name: Build Windows VST3
 
-   on:
-     push:
-     workflow_dispatch:
+on:
+  push:
+  workflow_dispatch:
 
-   jobs:
-     windows:
-       runs-on: windows-latest
-       steps:
-         - uses: actions/checkout@v4
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
 
-         - name: Configure
-           run: cmake -S Prophecy_of_Scream_source -B build -A x64
+      - name: Configure
+        run: cmake -B build -A x64
 
-         - name: Build VST3
-           run: cmake --build build --config Release --target ProphecyOfScream_VST3 --parallel
+      - name: Build VST3
+        run: cmake --build build --config Release --target ProphecyOfScream_VST3 --parallel
 
-         - name: Upload VST3
-           uses: actions/upload-artifact@v4
-           with:
-             name: Prophecy-of-Scream-VST3-Windows
-             path: build/ProphecyOfScream_artefacts/Release/VST3/
+      - name: Remove build leftovers (.lib / .exp)
+        shell: pwsh
+        run: Get-ChildItem build/ProphecyOfScream_artefacts/Release/VST3 -Recurse -Include *.lib,*.exp | Remove-Item
+
+      - name: Upload VST3
+        uses: actions/upload-artifact@v5
+        with:
+          name: Prophecy-of-Scream-VST3-Windows
+          path: build/ProphecyOfScream_artefacts/Release/VST3/

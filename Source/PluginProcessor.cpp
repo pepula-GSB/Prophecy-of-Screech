@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "BinaryData.h"
 
 using namespace juce;
 
@@ -134,33 +135,39 @@ AudioProcessorValueTreeState::ParameterLayout ProphecyProcessor::createLayout()
 // ------------------------------------------------------------ factory presets
 namespace
 {
-    struct Preset { const char* name; std::vector<std::pair<String, float>> values; };
+    struct Preset { String name; std::vector<std::pair<String, float>> values; };
+
+    // presets shipped as .pos files inside the plugin (Resources/Presets)
+    struct EmbeddedPreset { const char* name; const char* data; int size; };
+    const EmbeddedPreset embeddedPresets[] {
+        { "Blippy Blippy",   BinaryData::Blippy_Blippy_pos,   BinaryData::Blippy_Blippy_posSize },
+        { "Brain Fryer",     BinaryData::Brain_Fryer_pos,     BinaryData::Brain_Fryer_posSize },
+        { "Cardio",          BinaryData::Cardio_pos,          BinaryData::Cardio_posSize },
+        { "Devil's Scream",  BinaryData::Devils_Scream_pos,   BinaryData::Devils_Scream_posSize },
+        { "Farting Grandpa", BinaryData::Farting_Grandpa_pos, BinaryData::Farting_Grandpa_posSize },
+        { "Horn of Fallen",  BinaryData::Horn_of_Fallen_pos,  BinaryData::Horn_of_Fallen_posSize },
+        { "Mad Machine",     BinaryData::Mad_Machine_pos,     BinaryData::Mad_Machine_posSize },
+        { "Sexy Nightmare",  BinaryData::Sexy_Nightmare_pos,  BinaryData::Sexy_Nightmare_posSize },
+        { "Sonar",           BinaryData::Sonar_pos,           BinaryData::Sonar_posSize },
+        { "Zephyr",          BinaryData::Zephyr_pos,          BinaryData::Zephyr_posSize },
+    };
+
+    Preset presetFromXml (const EmbeddedPreset& e)
+    {
+        Preset p { e.name, {} };
+        if (auto xml = XmlDocument::parse (String::fromUTF8 (e.data, e.size)))
+            for (auto* child : xml->getChildWithTagNameIterator ("PARAM"))
+                p.values.push_back ({ child->getStringAttribute ("id"), (float) child->getDoubleAttribute ("value") });
+        jassert (! p.values.empty());
+        return p;
+    }
 
     String o2 (const char* base) { return ParamIDs::osc (1, base); }
 
-    const std::vector<Preset>& presets()
+    std::vector<Preset> buildPresets()
     {
         using namespace ParamIDs;
-        static const std::vector<Preset> p {
-            { "Prophecy Lead", {} },
-            { "Raw Scream", { { wave, 0.2f }, { unison, 5 }, { detune, 25 }, { fm, 0.55f }, { fmRatio, 3 /*2*/ },
-                              { penv, 24 }, { pdecay, 80 }, { scream, 0.6f }, { ftype, 1 }, { cutoff, 2500 }, { reso, 0.6f },
-                              { fenv, 3 }, { fdecay, 220 }, { dtype, 3 }, { drive, 30 }, { lfoDiv, 2 /*1/16*/ }, { lcut, 1.2f } } },
-            { "Talking Screech", { { fm, 0.35f }, { fmRatio, 1 }, { ftype, 2 }, { cutoff, 1200 }, { reso, 0.75f }, { fenv, 0 },
-                                   { lshape, 0 }, { lfoDiv, 5 /*1/8*/ }, { lcut, 2.0f }, { dtype, 1 }, { drive, 20 }, { scream, 0.2f } } },
-            { "Siren Riser", { { glide, 400 }, { penv, -24 }, { pdecay, 900 }, { lshape, 1 }, { lfoDiv, 8 /*1/4*/ }, { lpitch, 2 },
-                               { fm, 0.2f }, { cutoff, 4000 }, { reso, 0.4f }, { fenv, 1 }, { fdecay, 800 }, { rmix, 0.3f } } },
-            { "Uptempo Laser", { { penv, 36 }, { pdecay, 40 }, { fm, 0.7f }, { fmRatio, 4 /*3*/ }, { dtype, 0 }, { drive, 36 },
-                                 { cutoff, 6000 }, { reso, 0.3f }, { fenv, 1.5f }, { fdecay, 120 }, { unison, 1 }, { release, 60 },
-                                 { dtime, 2 /*1/16*/ }, { dfb, 0.3f }, { glide, 20 } } },
-            { "Euphoric Scream", { { unison, 7 }, { detune, 30 }, { wave, 0.5f }, { fm, 0.15f }, { dtype, 1 }, { drive, 18 },
-                                   { cutoff, 4500 }, { reso, 0.35f }, { rmix, 0.35f }, { dfx, 0.25f }, { scream, 0.15f },
-                                   { width, 0.9f } } },
-            { "Frenchcore Rip", { { dtype, 2 }, { drive, 40 }, { fm, 0.8f }, { fmRatio, 2 /*1.5*/ }, { lshape, 4 }, { lfoDiv, 2 },
-                                  { lcut, 2.5f }, { ftype, 0 }, { cutoff, 3000 }, { reso, 0.55f }, { scream, 0.5f }, { bite, 600 } } },
-            { "Hoover Scream", { { unison, 7 }, { detune, 55 }, { wave, 0.35f }, { glide, 180 }, { penv, -12 }, { pdecay, 300 },
-                                 { fm, 0.3f }, { fmRatio, 0 /*0.5*/ }, { dtype, 1 }, { drive, 16 }, { ftype, 0 }, { cutoff, 5000 },
-                                 { reso, 0.2f }, { width, 1.f } } },
+        std::vector<Preset> p {
             { "Dutchie", { { wave, 1.f }, { unison, 4 }, { detune, 90 }, { width, 1.f }, { fm, 0.91f }, { fmRatio, 3 /*2*/ },
                            { glide, 116.422f }, { penv, 16.1f }, { pdecay, 321.191f }, { bend, 15 }, { legato, 1 },
                            { dtype, 3 }, { drive, 48 }, { bite, 25 }, { dmix, 1.f },
@@ -194,6 +201,14 @@ namespace
                                  { o2 (ftype), 1 }, { o2 (cutoff), 1600 }, { o2 (reso), 0.3f }, { o2 (fenv), 1.5f }, { o2 (lfoOn), 0 },
                                  { glide, 90 }, { rmix, 0.25f } } },
         };
+        for (auto& e : embeddedPresets)
+            p.push_back (presetFromXml (e));
+        return p;
+    }
+
+    const std::vector<Preset>& presets()
+    {
+        static const std::vector<Preset> p = buildPresets();
         return p;
     }
 }
@@ -202,7 +217,7 @@ int ProphecyProcessor::getNumPrograms() { return (int) presets().size(); }
 
 const String ProphecyProcessor::getProgramName (int index)
 {
-    return isPositiveAndBelow (index, (int) presets().size()) ? String (presets()[(size_t) index].name) : String();
+    return isPositiveAndBelow (index, (int) presets().size()) ? presets()[(size_t) index].name : String();
 }
 
 void ProphecyProcessor::setCurrentProgram (int index)

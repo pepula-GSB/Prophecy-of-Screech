@@ -99,35 +99,16 @@ int main (int argc, char** argv)
         return pk;
     };
 
-    // ---- v1 compatibility: the v1 presets must sound the same as in v1.0
-    if (argc > 2)
+    // ---- embedded presets carry exactly the values from their .pos files
     {
-        AudioFormatManager fm; fm.registerBasicFormats();
-        std::unique_ptr<AudioFormatReader> rd (fm.createReaderFor (File (argv[2])));
-        if (rd != nullptr)
-        {
-            AudioBuffer<float> v1 (2, (int) rd->lengthInSamples);
-            rd->read (&v1, 0, (int) rd->lengthInSamples, 0, true, true);
-            const int seg = barSamples * 2;
-            const int nV1 = v1.getNumSamples() / seg;
-            for (int prog = 0; prog < nV1; ++prog)
-            {
-                double e = 0.0, ref = 0.0;
-                for (int ch = 0; ch < 2; ++ch)
-                    for (int i = 0; i < seg; ++i)
-                    {
-                        const float a = v1.getSample (ch, prog * seg + i), b = all.getSample (ch, prog * seg + i);
-                        e += (a - b) * (a - b); ref += a * a;
-                    }
-                const double rel = std::sqrt (e / jmax (1e-12, ref));
-                const String name = proc.getProgramName (prog);
-                const bool random = name == "Frenchcore Rip";     // S&H LFO is random by design
-                const bool pass = random || rel < 0.02;
-                ok &= pass;
-                printf ("v1 match %-18s diff %.4f %s\n", name.toRawUTF8(), rel, random ? "(S&H, skipped)" : (pass ? "OK" : "FAIL"));
-            }
-        }
-        else { printf ("v1 reference not readable\n"); ok = false; }
+        int idx = -1;
+        for (int i = 0; i < proc.getNumPrograms(); ++i) if (proc.getProgramName (i) == "Devil's Scream") idx = i;
+        proc.setCurrentProgram (jmax (0, idx));
+        auto v = [&proc] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+        const bool same = idx >= 0 && std::abs (v ("cutoff") - 2248.398f) < 0.5f && std::abs (v ("penv") + 20.9f) < 0.05f
+                          && v ("o2_on") < 0.5f && v ("dly_on") < 0.5f && std::abs (v ("o2_bite") - 799.8f) < 0.5f;
+        printf ("embedded preset values (Devil's Scream): %s\n", same ? "OK" : "FAIL");
+        ok &= same;
     }
 
     // ---- states saved by v1.0 (no OSC2 / FX switches) load with OSC2 off and all FX on
@@ -160,8 +141,8 @@ int main (int argc, char** argv)
 
         setP ("o2_on", 0); setP ("dly_on", 0); setP ("rev_on", 0);
         const float pk0 = renderRiff (1);
-        printf ("both oscillators off -> peak %.5f %s\n", pk0, pk0 >= 0.f && pk0 < 1e-4f ? "OK" : "FAIL");
-        ok &= pk0 >= 0.f && pk0 < 1e-4f;
+        printf ("both oscillators off -> peak %.5f %s\n", pk0, pk0 >= 0.f && pk0 < 1e-3f ? "OK" : "FAIL");
+        ok &= pk0 >= 0.f && pk0 < 1e-3f;   // -60 dB: allows the last reverb tail of the previous test
 
         proc.setCurrentProgram (0);
         const char* sw[] = { "o1_dist_on", "o1_filt_on", "o1_lfo_on", "dly_on", "rev_on" };
@@ -177,11 +158,11 @@ int main (int argc, char** argv)
 
     // state round-trip
     MemoryBlock state;
-    proc.setCurrentProgram (3);
+    proc.setCurrentProgram (1);   // Zaagtand '04 (glide 255.8 ms)
     proc.getStateInformation (state);
     proc.setCurrentProgram (0);
     proc.setStateInformation (state.getData(), (int) state.getSize());
-    const bool stateOk = std::abs (proc.apvts.getRawParameterValue ("glide")->load() - 400.f) < 0.5f;
+    const bool stateOk = std::abs (proc.apvts.getRawParameterValue ("glide")->load() - 255.795f) < 0.5f;
     printf ("state round-trip: %s\n", stateOk ? "OK" : "FAIL");
     ok &= stateOk;
 
@@ -208,7 +189,8 @@ int main (int argc, char** argv)
         auto f = ProphecyProcessor::getUserPresetFolder().getChildFile ("__test_preset.pos");
         proc.setCurrentProgram (0);
         const bool loaded = proc.loadUserPreset (f);
-        const bool same = std::abs (proc.apvts.getRawParameterValue ("cutoff")->load() - cut) < 1.f;
+        const bool same = std::abs (proc.apvts.getRawParameterValue ("cutoff")->load() - cut) < 1.f
+                          && proc.getPresetName() == "__test_preset";
         printf ("user preset save/load: %s\n", (saved && loaded && same) ? "OK" : "FAIL");
         ok &= saved && loaded && same;
         f.deleteFile();
@@ -224,7 +206,7 @@ int main (int argc, char** argv)
     }
 
     // GUI snapshot
-    proc.setCurrentProgram (proc.getNumPrograms() - 1);   // Twin Prophecy (both oscillators)
+    proc.setCurrentProgram (3);   // Twin Prophecy (both oscillators)
     for (int b = 0; b < 40; ++b)
     {
         AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer midi;

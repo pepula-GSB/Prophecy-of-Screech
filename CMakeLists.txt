@@ -18,12 +18,22 @@ else()
     FetchContent_MakeAvailable(JUCE)
 endif()
 
-juce_add_binary_data(ProphecyFonts SOURCES
+juce_add_binary_data(ProphecyData SOURCES
     Resources/Fonts/Michroma-Regular.ttf
     Resources/Fonts/BarlowSemiCondensed-Medium.ttf
     Resources/Fonts/BarlowSemiCondensed-SemiBold.ttf
-    Resources/Fonts/BarlowSemiCondensed-Bold.ttf)
-set_target_properties(ProphecyFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    Resources/Fonts/BarlowSemiCondensed-Bold.ttf
+    Resources/Presets/Blippy_Blippy.pos
+    Resources/Presets/Brain_Fryer.pos
+    Resources/Presets/Cardio.pos
+    Resources/Presets/Devils_Scream.pos
+    Resources/Presets/Farting_Grandpa.pos
+    Resources/Presets/Horn_of_Fallen.pos
+    Resources/Presets/Mad_Machine.pos
+    Resources/Presets/Sexy_Nightmare.pos
+    Resources/Presets/Sonar.pos
+    Resources/Presets/Zephyr.pos)
+set_target_properties(ProphecyData PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 juce_add_plugin(ProphecyOfScream
     COMPANY_NAME "Prophecy Audio"
@@ -53,7 +63,7 @@ target_compile_definitions(ProphecyOfScream PUBLIC
 
 target_link_libraries(ProphecyOfScream
     PRIVATE
-        ProphecyFonts
+        ProphecyData
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -68,5 +78,5 @@ if(PROPHECY_BUILD_TESTS)
     target_sources(RenderTest PRIVATE Tests/RenderTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_compile_definitions(RenderTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         $<$<PLATFORM_ID:Linux>:JUCE_USE_XRANDR=0 JUCE_USE_XINERAMA=0 JUCE_USE_XCURSOR=0 JUCE_USE_XRENDER=0 JUCE_ALSA=0 JUCE_JACK=0>)
-    target_link_libraries(RenderTest PRIVATE ProphecyFonts juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+    target_link_libraries(RenderTest PRIVATE ProphecyData juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 endif()

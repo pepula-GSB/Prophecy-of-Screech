@@ -30,7 +30,9 @@ Każdy oscylator ma własne obwiednie pitchu i filtra oraz własne LFO. Wszystko
 Dwuklik na pokrętle = wartość domyślna. Okno można skalować za róg.
 
 ## Presety
-Fabryczne: Prophecy Lead, Raw Scream, Talking Screech, Siren Riser, Uptempo Laser, Euphoric Scream, Frenchcore Rip, Hoover Scream, **Dutchie** (domyślny), **Zaagtand '04**, **Oldskool Gekte '05**, **Twin Prophecy** (oba oscylatory).
+Fabryczne: **Dutchie** (domyślny), Zaagtand '04, Oldskool Gekte '05, Twin Prophecy, Blippy Blippy, Brain Fryer, Cardio, Devil's Scream, Farting Grandpa, Horn of Fallen, Mad Machine, Sexy Nightmare, Sonar, Zephyr.
+
+Presety z `Resources/Presets` są wbudowane w plugin – żeby dodać nowy fabryczny preset, wrzuć tam plik `.pos`, dopisz go w `CMakeLists.txt` i w `embeddedPresets` w `PluginProcessor.cpp`.
 
 - **< >** – poprzedni / następny preset.
 - **SAVE** – zapis do `Dokumenty\Prophecy of Scream\Presets\*.pos`. Twoje presety są na liście w sekcji USER.

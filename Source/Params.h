@@ -1,58 +1,85 @@
 #pragma once
 #include <juce_audio_processors/juce_audio_processors.h>
 
+// ---------------------------------------------------------------------
+//  Parameter IDs
+//  OSC 1 keeps the v1.0 IDs ("wave", "cutoff", ...) so projects saved
+//  with v1.0 load with the same sound. OSC 2 uses the "o2_" prefix.
+// ---------------------------------------------------------------------
 namespace ParamIDs
 {
-    // OSC
-    inline constexpr const char* wave      = "wave";
-    inline constexpr const char* unison    = "unison";
-    inline constexpr const char* detune    = "detune";
-    inline constexpr const char* width     = "width";
-    inline constexpr const char* fm        = "fm";
-    inline constexpr const char* fmRatio   = "fmratio";
-    // PITCH
-    inline constexpr const char* glide     = "glide";
-    inline constexpr const char* penv      = "penv";
-    inline constexpr const char* pdecay    = "pdecay";
-    inline constexpr const char* bend      = "bend";
-    inline constexpr const char* legato    = "legato";
-    // MACRO
-    inline constexpr const char* scream    = "scream";
-    // FILTER
-    inline constexpr const char* ftype     = "ftype";
-    inline constexpr const char* cutoff    = "cutoff";
-    inline constexpr const char* reso      = "reso";
-    inline constexpr const char* fenv      = "fenv";
-    inline constexpr const char* fdecay    = "fdecay";
-    inline constexpr const char* keytrack  = "keytrack";
-    // DIST
-    inline constexpr const char* dtype     = "dtype";
-    inline constexpr const char* drive     = "drive";
-    inline constexpr const char* bite      = "bite";
-    inline constexpr const char* dmix      = "dmix";
-    // LFO
-    inline constexpr const char* lshape    = "lshape";
-    inline constexpr const char* lsync     = "lsync";
-    inline constexpr const char* lrate     = "lrate";
-    inline constexpr const char* lfoDiv      = "lfoDiv";
-    inline constexpr const char* lcut      = "lcut";
-    inline constexpr const char* lpitch    = "lpitch";
-    // AMP
-    inline constexpr const char* attack    = "attack";
-    inline constexpr const char* decay     = "decay";
-    inline constexpr const char* sustain   = "sustain";
-    inline constexpr const char* release   = "release";
-    // DELAY
-    inline constexpr const char* dtime     = "dtime";
-    inline constexpr const char* dfb       = "dfb";
-    inline constexpr const char* dfx       = "dfx";
-    inline constexpr const char* pingpong  = "pingpong";
-    // REVERB
-    inline constexpr const char* rsize     = "rsize";
-    inline constexpr const char* rdamp     = "rdamp";
-    inline constexpr const char* rmix      = "rmix";
-    // MASTER
-    inline constexpr const char* volume    = "volume";
+    constexpr int numOscs = 2;
+
+    // per-oscillator bases ---------------------------------------------
+    // oscillator
+    inline constexpr const char* on       = "on";        // new in v2
+    inline constexpr const char* level    = "level";     // new in v2
+    inline constexpr const char* oct      = "oct";       // new in v2
+    inline constexpr const char* semi     = "semi";      // new in v2
+    inline constexpr const char* fine     = "fine";      // new in v2
+    inline constexpr const char* wave     = "wave";
+    inline constexpr const char* unison   = "unison";
+    inline constexpr const char* detune   = "detune";
+    inline constexpr const char* width    = "width";
+    inline constexpr const char* fm       = "fm";
+    inline constexpr const char* fmRatio  = "fmratio";
+    inline constexpr const char* penv     = "penv";
+    inline constexpr const char* pdecay   = "pdecay";
+    // distortion tab
+    inline constexpr const char* distOn   = "dist_on";   // new in v2
+    inline constexpr const char* dtype    = "dtype";
+    inline constexpr const char* drive    = "drive";
+    inline constexpr const char* bite     = "bite";
+    inline constexpr const char* dmix     = "dmix";
+    // filter tab
+    inline constexpr const char* filtOn   = "filt_on";   // new in v2
+    inline constexpr const char* ftype    = "ftype";
+    inline constexpr const char* cutoff   = "cutoff";
+    inline constexpr const char* reso     = "reso";
+    inline constexpr const char* fenv     = "fenv";
+    inline constexpr const char* fdecay   = "fdecay";
+    inline constexpr const char* keytrack = "keytrack";
+    // lfo tab
+    inline constexpr const char* lfoOn    = "lfo_on";    // new in v2
+    inline constexpr const char* lshape   = "lshape";
+    inline constexpr const char* lsync    = "lsync";
+    inline constexpr const char* lrate    = "lrate";
+    inline constexpr const char* lfoDiv   = "lfoDiv";
+    inline constexpr const char* lcut     = "lcut";
+    inline constexpr const char* lpitch   = "lpitch";
+
+    inline bool isNewInV2 (const juce::String& base)
+    {
+        return base == on || base == level || base == oct || base == semi || base == fine
+            || base == distOn || base == filtOn || base == lfoOn;
+    }
+
+    // Full ID of a per-oscillator parameter (osc = 0 or 1)
+    inline juce::String osc (int o, const juce::String& base)
+    {
+        if (o == 0) return isNewInV2 (base) ? "o1_" + base : base;
+        return "o2_" + base;
+    }
+
+    // global ----------------------------------------------------------
+    inline constexpr const char* glide    = "glide";
+    inline constexpr const char* bend     = "bend";
+    inline constexpr const char* legato   = "legato";
+    inline constexpr const char* scream   = "scream";
+    inline constexpr const char* attack   = "attack";
+    inline constexpr const char* decay    = "decay";
+    inline constexpr const char* sustain  = "sustain";
+    inline constexpr const char* release  = "release";
+    inline constexpr const char* dlyOn    = "dly_on";    // new in v2
+    inline constexpr const char* dtime    = "dtime";
+    inline constexpr const char* dfb      = "dfb";
+    inline constexpr const char* dfx      = "dfx";
+    inline constexpr const char* pingpong = "pingpong";
+    inline constexpr const char* revOn    = "rev_on";    // new in v2
+    inline constexpr const char* rsize    = "rsize";
+    inline constexpr const char* rdamp    = "rdamp";
+    inline constexpr const char* rmix     = "rmix";
+    inline constexpr const char* volume   = "volume";
 }
 
 namespace ParamChoices

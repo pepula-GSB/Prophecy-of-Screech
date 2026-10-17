@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(ProphecyOfScream VERSION 1.0.0)
+project(ProphecyOfScream VERSION 2.0.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,13 @@ else()
         GIT_SHALLOW TRUE)
     FetchContent_MakeAvailable(JUCE)
 endif()
+
+juce_add_binary_data(ProphecyFonts SOURCES
+    Resources/Fonts/Michroma-Regular.ttf
+    Resources/Fonts/BarlowSemiCondensed-Medium.ttf
+    Resources/Fonts/BarlowSemiCondensed-SemiBold.ttf
+    Resources/Fonts/BarlowSemiCondensed-Bold.ttf)
+set_target_properties(ProphecyFonts PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 juce_add_plugin(ProphecyOfScream
     COMPANY_NAME "Prophecy Audio"
@@ -46,6 +53,7 @@ target_compile_definitions(ProphecyOfScream PUBLIC
 
 target_link_libraries(ProphecyOfScream
     PRIVATE
+        ProphecyFonts
         juce::juce_audio_utils
         juce::juce_dsp
     PUBLIC
@@ -60,5 +68,5 @@ if(PROPHECY_BUILD_TESTS)
     target_sources(RenderTest PRIVATE Tests/RenderTest.cpp Source/PluginProcessor.cpp Source/PluginEditor.cpp)
     target_compile_definitions(RenderTest PRIVATE JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0
         $<$<PLATFORM_ID:Linux>:JUCE_USE_XRANDR=0 JUCE_USE_XINERAMA=0 JUCE_USE_XCURSOR=0 JUCE_USE_XRENDER=0 JUCE_ALSA=0 JUCE_JACK=0>)
-    target_link_libraries(RenderTest PRIVATE juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
+    target_link_libraries(RenderTest PRIVATE ProphecyFonts juce::juce_audio_utils juce::juce_dsp juce::juce_recommended_config_flags)
 endif()

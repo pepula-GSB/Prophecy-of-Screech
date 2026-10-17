@@ -3,41 +3,60 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "PluginProcessor.h"
 
+// =====================================================================
+//  PROPHECY OF SCREAM v2 - "stage" interface
+//  glass panels under festival lighting, Michroma + Barlow typography
+// =====================================================================
 namespace Palette
 {
-    const juce::Colour bg        { 0xff060406 };
-    const juce::Colour panel     { 0xff0e0a0c };
-    const juce::Colour panelEdge { 0xff3a1219 };
-    const juce::Colour red       { 0xffff1e3c };
-    const juce::Colour deepRed   { 0xff8a0018 };
-    const juce::Colour ember     { 0xffff6a2a };
-    const juce::Colour text      { 0xffefe4e4 };
-    const juce::Colour dimText   { 0xff8d7a7d };
+    const juce::Colour bg       { 0xff050304 };
+    const juce::Colour red      { 0xffff2440 };
+    const juce::Colour hot      { 0xffff6b7d };
+    const juce::Colour deepRed  { 0xff7a0016 };
+    const juce::Colour text     { 0xfff3ecec };
+    const juce::Colour label    { 0xffb3a3a6 };
+    const juce::Colour value    { 0xffd8cdcf };
+    const juce::Colour dim      { 0xff6d6164 };
+    const juce::Colour glass    { 0x0fffffff };
+    const juce::Colour edge     { 0x1affffff };
 }
 
 // ------------------------------------------------------------------ look & feel
-class ProphecyLookAndFeel : public juce::LookAndFeel_V4
+class StageLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    ProphecyLookAndFeel();
-    void drawRotarySlider (juce::Graphics&, int x, int y, int w, int h, float pos,
-                           float startAngle, float endAngle, juce::Slider&) override;
-    void drawToggleButton (juce::Graphics&, juce::ToggleButton&, bool highlighted, bool down) override;
-    void drawComboBox (juce::Graphics&, int w, int h, bool down, int bx, int by, int bw, int bh, juce::ComboBox&) override;
-    juce::Font getComboBoxFont (juce::ComboBox&) override;
-    juce::Font getPopupMenuFont() override;
+    StageLookAndFeel();
+
+    juce::Font titleFont (float h, float kerning = 0.f) const;   // Michroma
+    juce::Font labelFont (float h, float kerning = 0.f) const;   // Barlow SemiBold
+    juce::Font valueFont (float h, float kerning = 0.f) const;   // Barlow Medium
+    juce::Font boldFont  (float h, float kerning = 0.f) const;   // Barlow Bold
+
+    void drawRotarySlider (juce::Graphics&, int, int, int, int, float, float, float, juce::Slider&) override;
     juce::Label* createSliderTextBox (juce::Slider&) override;
-    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool highlighted, bool down) override;
-    void drawButtonText (juce::Graphics&, juce::TextButton&, bool highlighted, bool down) override;
+    void drawComboBox (juce::Graphics&, int, int, bool, int, int, int, int, juce::ComboBox&) override;
+    juce::Font getComboBoxFont (juce::ComboBox&) override;
+    void positionComboBoxText (juce::ComboBox&, juce::Label&) override;
+    juce::Font getPopupMenuFont() override;
+    void drawPopupMenuBackground (juce::Graphics&, int, int) override;
+    void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool, bool) override;
+    void drawButtonText (juce::Graphics&, juce::TextButton&, bool, bool) override;
     juce::Font getAlertWindowTitleFont() override;
     juce::Font getAlertWindowMessageFont() override;
+    juce::Font getTextButtonFont (juce::TextButton&, int) override;
+    juce::Font getLabelFont (juce::Label&) override;
+
+private:
+    juce::Typeface::Ptr tfTitle, tfLabel, tfValue, tfBold;
 };
 
-// ------------------------------------------------------------------ knob
+StageLookAndFeel& stageLnf (juce::Component&);
+
+// ------------------------------------------------------------------ controls
 class Knob : public juce::Component
 {
 public:
-    Knob (juce::AudioProcessorValueTreeState&, const char* paramId, const juce::String& label,
+    Knob (juce::AudioProcessorValueTreeState&, const juce::String& paramId, const juce::String& label,
           bool bipolar = false, bool big = false);
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -45,72 +64,165 @@ public:
 private:
     juce::String label;
     bool big;
+    juce::Rectangle<int> labelArea;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> attachment;
 };
 
-// ------------------------------------------------------------------ toggle
-class Toggle : public juce::Component
+// on/off switch bound to a bool parameter: a pill (power) or a chip with LED + text
+class Switch : public juce::Component, public juce::SettableTooltipClient
 {
 public:
-    Toggle (juce::AudioProcessorValueTreeState&, const char* paramId, const juce::String& label);
-    void resized() override;
+    enum Style { Power, Chip };
+    Switch (juce::AudioProcessorValueTreeState&, const juce::String& paramId, const juce::String& text, Style);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseEnter (const juce::MouseEvent&) override { repaint(); }
+    void mouseExit (const juce::MouseEvent&) override  { repaint(); }
+    bool isOn() const { return state; }
 private:
-    juce::ToggleButton button;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> attachment;
+    juce::String text;
+    Style style;
+    bool state = false;
+    std::unique_ptr<juce::ParameterAttachment> attachment;
+};
+
+// vertical list of choices bound to a choice parameter
+class Segmented : public juce::Component, public juce::SettableTooltipClient
+{
+public:
+    Segmented (juce::AudioProcessorValueTreeState&, const juce::String& paramId, juce::StringArray labels);
+    void paint (juce::Graphics&) override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override { hover = -1; repaint(); }
+private:
+    int itemAt (juce::Point<int>) const;
+    juce::StringArray labels;
+    int index = 0, hover = -1;
+    std::unique_ptr<juce::ParameterAttachment> attachment;
+};
+
+// ------------------------------------------------------------------ one oscillator panel
+class OscPanel : public juce::Component
+{
+public:
+    OscPanel (ProphecyProcessor&, int osc);
+    void resized() override;
+    void refresh();
+private:
+    ProphecyProcessor& proc;
+    const int osc;
+    Switch power;
+    juce::Component content;
+    std::vector<std::unique_ptr<Knob>> knobs;
+};
+
+// ------------------------------------------------------------------ effect tabs under an oscillator
+class FxTabs : public juce::Component
+{
+public:
+    FxTabs (ProphecyProcessor&, int osc);
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseDown (const juce::MouseEvent&) override;
+    void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override { hoverTab = -1; repaint(); }
+    void refresh();
+    void selectTab (int);
+
+private:
+    struct Page : public juce::Component
+    {
+        std::unique_ptr<Segmented> seg;
+        std::vector<std::unique_ptr<juce::Component>> cells;
+        juce::Component* overlay = nullptr;    // shares the slot of cells[overlaySlot]
+        std::unique_ptr<juce::Component> overlayOwner;
+        int overlaySlot = -1;
+        void resized() override;
+    };
+
+    juce::Rectangle<int> tabBounds (int i) const;
+    ProphecyProcessor& proc;
+    const int osc;
+    int current = 0, hoverTab = -1;
+    std::array<Page, 3> pages;
+    std::array<std::unique_ptr<Switch>, 3> powers;
+    std::array<std::atomic<float>*, 3> onFlags {};
+    std::atomic<float>* syncFlag = nullptr;
+    juce::Component* rateKnob = nullptr;
+    juce::Component* divKnob = nullptr;
+    std::array<bool, 3> lastOn { false, false, false };
 };
 
 // ------------------------------------------------------------------ oscilloscope
-class Scope : public juce::Component, private juce::Timer
+class Scope : public juce::Component
 {
 public:
-    explicit Scope (ProphecyProcessor&);
+    explicit Scope (ProphecyProcessor& p) : proc (p) {}
     void paint (juce::Graphics&) override;
 private:
-    void timerCallback() override { repaint(); }
     ProphecyProcessor& proc;
 };
 
-// ------------------------------------------------------------------ main canvas (fixed 1280x760, scaled by editor)
+// ------------------------------------------------------------------ output meter
+class Meter : public juce::Component
+{
+public:
+    void setLevel (float peak);
+    void paint (juce::Graphics&) override;
+private:
+    float level = 0.f, hold = 0.f;
+    int holdCount = 0;
+};
+
+// ------------------------------------------------------------------ canvas (fixed size, scaled by the editor)
 class Canvas : public juce::Component, private juce::Timer
 {
 public:
-    static constexpr int W = 1280, H = 760;
+    static constexpr int W = 1360, H = 800;
     explicit Canvas (ProphecyProcessor&);
     ~Canvas() override;
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
-    void timerCallback() override;
-    void drawSigil (juce::Graphics&);
+    struct Panel { juce::String title; juce::Rectangle<int> area; bool spot = false; };
 
-    struct Section { juce::String title; juce::Rectangle<int> area; };
-    struct RowItem { juce::String title; std::vector<juce::Component*> cells; juce::Component* wide = nullptr; float wideWeight = 0.f; };
-    void layoutRow (int y, int h, const std::vector<RowItem>& items);
+    void timerCallback() override;
+    void renderBackground();
+    void drawStage (juce::Graphics&);
+    void drawGlassPanel (juce::Graphics&, const Panel&);
+    void refreshPresetList();
+    void stepPreset (int delta);
+    void showSaveDialog();
+    Knob* knob (const juce::String& id, const juce::String& label, bool bipolar = false, bool big = false);
+    Switch* toggle (const juce::String& id, const juce::String& label, Switch::Style);
 
     ProphecyProcessor& proc;
-    ProphecyLookAndFeel lnf;
+    StageLookAndFeel lnf;
+    juce::Image background;
+    std::vector<Panel> panels;
+
+    std::unique_ptr<OscPanel> osc1, osc2;
+    std::unique_ptr<FxTabs> fx1, fx2;
     std::vector<std::unique_ptr<juce::Component>> owned;
-    std::vector<Section> sections;
-    std::vector<RowItem> row0, row1, row2;
+    Knob* screamKnob = nullptr;
+    std::vector<juce::Component*> voiceCells, ampCells, delayCells, reverbCells;
+    Switch* delayPower = nullptr;
+    Switch* reverbPower = nullptr;
+    Knob* volumeKnob = nullptr;
+    Scope scope;
+    Meter meter;
 
-    Knob* add (const char* id, const juce::String& label, bool bipolar = false, bool big = false);
-    Toggle* addToggle (const char* id, const juce::String& label);
-
-    void refreshPresetList();
-    void showSaveDialog();
-
-    juce::TextButton saveButton { "SAVE" }, randomButton { "RANDOMIZE" };
+    juce::ComboBox presetBox;
+    juce::TextButton prevButton { "<" }, nextButton { ">" }, saveButton { "SAVE" }, randomButton { "RANDOMIZE" };
     juce::Array<juce::File> userPresetFiles;
     std::unique_ptr<juce::AlertWindow> saveDialog;
     juce::String lastPresetName;
     static constexpr int userIdBase = 1000;
 
-    Knob* rateKnob = nullptr;
-    Knob* divKnob = nullptr;
-    Scope scope;
-    juce::ComboBox presetBox;
-    float angle = 0.f;
+    float glow = 0.f, lastGlow = -1.f;
+    int lastScopePos = -1;
 };
 
 // ------------------------------------------------------------------ editor

@@ -60,8 +60,119 @@ int main (int argc, char** argv)
         const double rms = std::sqrt (sumSq / (barSamples * 4.0));
         const bool pass = ! nan && peak > 0.05f && peak <= 1.0f;
         ok &= pass;
-        printf ("%-18s peak %.3f  rms %.3f (%.1f dBFS)  %s\n", proc.getProgramName (prog).toRawUTF8(), peak, rms,
+        printf ("%-20s peak %.3f  rms %.3f (%.1f dBFS)  %s\n", proc.getProgramName (prog).toRawUTF8(), peak, rms,
                 Decibels::gainToDecibels ((float) rms), pass ? "OK" : (nan ? "NAN!" : "FAIL"));
+    }
+
+    auto setP = [&proc] (const String& id, float v)
+    {
+        if (auto* prm = proc.apvts.getParameter (id)) prm->setValueNotifyingHost (prm->convertTo0to1 (v));
+    };
+    auto renderRiff = [&] (int bars) -> float   // returns peak, -1 on NaN
+    {
+        float pk = 0.f;
+        for (int pos = 0; pos < barSamples * bars; pos += block)
+        {
+            AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer midi;
+            for (auto& n : riff)
+            {
+                const int on = n.startEighth * beat / 2, off = (n.startEighth + n.lenEighth) * beat / 2 + beat / 16;
+                if (on >= pos && on < pos + block)   midi.addEvent (MidiMessage::noteOn (1, n.note, (uint8) 110), on - pos);
+                if (off >= pos && off < pos + block) midi.addEvent (MidiMessage::noteOff (1, n.note), off - pos);
+            }
+            proc.processBlock (buf, midi);
+            for (int ch = 0; ch < 2; ++ch)
+                for (int i = 0; i < block; ++i)
+                {
+                    const float v = buf.getSample (ch, i);
+                    if (! std::isfinite (v)) return -1.f;
+                    pk = jmax (pk, std::abs (v));
+                }
+        }
+        // release everything and let it ring out
+        for (int b = 0; b < 400; ++b)
+        {
+            AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer m;
+            if (b == 0) m.addEvent (MidiMessage::allNotesOff (1), 0);
+            proc.processBlock (buf, m);
+        }
+        return pk;
+    };
+
+    // ---- v1 compatibility: the v1 presets must sound the same as in v1.0
+    if (argc > 2)
+    {
+        AudioFormatManager fm; fm.registerBasicFormats();
+        std::unique_ptr<AudioFormatReader> rd (fm.createReaderFor (File (argv[2])));
+        if (rd != nullptr)
+        {
+            AudioBuffer<float> v1 (2, (int) rd->lengthInSamples);
+            rd->read (&v1, 0, (int) rd->lengthInSamples, 0, true, true);
+            const int seg = barSamples * 2;
+            const int nV1 = v1.getNumSamples() / seg;
+            for (int prog = 0; prog < nV1; ++prog)
+            {
+                double e = 0.0, ref = 0.0;
+                for (int ch = 0; ch < 2; ++ch)
+                    for (int i = 0; i < seg; ++i)
+                    {
+                        const float a = v1.getSample (ch, prog * seg + i), b = all.getSample (ch, prog * seg + i);
+                        e += (a - b) * (a - b); ref += a * a;
+                    }
+                const double rel = std::sqrt (e / jmax (1e-12, ref));
+                const String name = proc.getProgramName (prog);
+                const bool random = name == "Frenchcore Rip";     // S&H LFO is random by design
+                const bool pass = random || rel < 0.02;
+                ok &= pass;
+                printf ("v1 match %-18s diff %.4f %s\n", name.toRawUTF8(), rel, random ? "(S&H, skipped)" : (pass ? "OK" : "FAIL"));
+            }
+        }
+        else { printf ("v1 reference not readable\n"); ok = false; }
+    }
+
+    // ---- states saved by v1.0 (no OSC2 / FX switches) load with OSC2 off and all FX on
+    {
+        proc.setCurrentProgram (0);
+        MemoryBlock mb; proc.getStateInformation (mb);
+        auto xml = AudioProcessor::getXmlFromBinary (mb.getData(), (int) mb.getSize());
+        for (int i = xml->getNumChildElements(); --i >= 0;)
+        {
+            const auto id = xml->getChildElement (i)->getStringAttribute ("id");
+            if (id.startsWith ("o1_") || id.startsWith ("o2_") || id == "dly_on" || id == "rev_on")
+                xml->removeChildElement (xml->getChildElement (i), true);
+        }
+        MemoryBlock old; AudioProcessor::copyXmlToBinary (*xml, old);
+        setP ("o2_on", 1); setP ("o1_dist_on", 0); setP ("rev_on", 0); setP ("o1_on", 0);
+        proc.setStateInformation (old.getData(), (int) old.getSize());
+        auto v = [&proc] (const char* id) { return proc.apvts.getRawParameterValue (id)->load(); };
+        const bool compat = v ("o2_on") < 0.5f && v ("o1_on") > 0.5f && v ("o1_dist_on") > 0.5f && v ("rev_on") > 0.5f;
+        printf ("v1 project state -> osc1 on, osc2 off, fx on: %s\n", compat ? "OK" : "FAIL");
+        ok &= compat;
+    }
+
+    // ---- OSC2 alone, both off, FX switches
+    {
+        proc.setCurrentProgram (0);
+        setP ("o1_on", 0); setP ("o2_on", 1);
+        const float pk2 = renderRiff (1);
+        printf ("osc2 only -> peak %.3f %s\n", pk2, pk2 > 0.05f ? "OK" : "FAIL");
+        ok &= pk2 > 0.05f;
+
+        setP ("o2_on", 0); setP ("dly_on", 0); setP ("rev_on", 0);
+        const float pk0 = renderRiff (1);
+        printf ("both oscillators off -> peak %.5f %s\n", pk0, pk0 >= 0.f && pk0 < 1e-4f ? "OK" : "FAIL");
+        ok &= pk0 >= 0.f && pk0 < 1e-4f;
+
+        proc.setCurrentProgram (0);
+        const char* sw[] = { "o1_dist_on", "o1_filt_on", "o1_lfo_on", "dly_on", "rev_on" };
+        for (auto* id : sw)
+        {
+            setP (id, 0);
+            const float pk = renderRiff (1);
+            printf ("%-12s off -> peak %.3f %s\n", id, pk, pk > 0.02f ? "OK" : "FAIL");
+            ok &= pk > 0.02f;
+            setP (id, 1);
+        }
     }
 
     // state round-trip
@@ -113,7 +224,7 @@ int main (int argc, char** argv)
     }
 
     // GUI snapshot
-    proc.setCurrentProgram (proc.getNumPrograms() - 1);   // Dutchie
+    proc.setCurrentProgram (proc.getNumPrograms() - 1);   // Twin Prophecy (both oscillators)
     for (int b = 0; b < 40; ++b)
     {
         AudioBuffer<float> buf (2, block); buf.clear(); MidiBuffer midi;
@@ -122,12 +233,25 @@ int main (int argc, char** argv)
     }
     {
         std::unique_ptr<AudioProcessorEditor> ed (proc.createEditor());
-        ed->setSize (1280, 760);
+        ed->setSize (1360, 800);
         auto img = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
         auto f = outDir.getChildFile ("prophecy_gui.png");
         f.deleteFile();
         FileOutputStream os (f);
         PNGImageFormat().writeImageToStream (img, os);
+
+        // second shot: FILTER tab on OSC 1, LFO tab on OSC 2
+        std::function<void (Component&, int&)> walk = [&walk] (Component& c, int& n)
+        {
+            if (auto* t = dynamic_cast<FxTabs*> (&c)) t->selectTab (n++ == 0 ? 1 : 2);
+            for (auto* ch : c.getChildren()) walk (*ch, n);
+        };
+        int n = 0; walk (*ed, n);
+        auto img2 = ed->createComponentSnapshot (ed->getLocalBounds(), true, 1.0f);
+        auto f2 = outDir.getChildFile ("prophecy_gui_tabs.png");
+        f2.deleteFile();
+        FileOutputStream os2 (f2);
+        PNGImageFormat().writeImageToStream (img2, os2);
     }
 
     printf (ok ? "ALL OK\n" : "SOME CHECKS FAILED\n");

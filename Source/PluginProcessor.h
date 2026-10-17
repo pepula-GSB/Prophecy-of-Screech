@@ -53,22 +53,27 @@ public:
 
 private:
     EngineParams gatherParams (double bpm) const;
+    void applyValues (const juce::XmlElement& xml);
 
+    using A = std::atomic<float>*;
+    struct OscPtrs
+    {
+        A on {}, level {}, oct {}, semi {}, fine {}, wave {}, unison {}, detune {}, width {}, fm {}, fmRatio {}, penv {}, pdecay {};
+        A distOn {}, dtype {}, drive {}, bite {}, dmix {};
+        A filtOn {}, ftype {}, cutoff {}, reso {}, fenv {}, fdecay {}, keytrack {};
+        A lfoOn {}, lshape {}, lsync {}, lrate {}, lfoDiv {}, lcut {}, lpitch {};
+    };
     struct Ptrs
     {
-        std::atomic<float> *wave, *unison, *detune, *width, *fm, *fmRatio,
-                           *glide, *penv, *pdecay, *bend, *legato, *scream,
-                           *ftype, *cutoff, *reso, *fenv, *fdecay, *keytrack,
-                           *dtype, *drive, *bite, *dmix,
-                           *lshape, *lsync, *lrate, *lfoDiv, *lcut, *lpitch,
-                           *attack, *decay, *sustain, *release,
-                           *dtime, *dfb, *dfx, *pingpong, *rsize, *rdamp, *rmix, *volume;
-    } ptr {};
+        std::array<OscPtrs, ParamIDs::numOscs> osc;
+        A glide {}, bend {}, legato {}, scream {}, attack {}, decay {}, sustain {}, release {};
+        A dlyOn {}, dtime {}, dfb {}, dfx {}, pingpong {}, revOn {}, rsize {}, rdamp {}, rmix {}, volume {};
+    } ptr;
+
     ScreechEngine engine;
     int currentProgram = 0;
     juce::String currentPresetName { "Prophecy Lead" };
     juce::Random randomGen;
-    void applyValues (const juce::XmlElement& xml);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ProphecyProcessor)
 };
